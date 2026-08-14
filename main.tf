@@ -16,8 +16,14 @@ resource "aws_security_group" "vulnerable_sg" {
   }
 }
 
+# Generate a random 4-byte string to ensure globally unique bucket names for every student
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
 resource "aws_s3_bucket" "vulnerable_bucket" {
-  bucket        = "titan-fintech-compliance-drift-bucket"
+  # This dynamically attaches the random string to the end of the bucket name
+  bucket        = "titan-fintech-compliance-drift-${random_id.bucket_suffix.hex}"
   force_destroy = true
 }
 
