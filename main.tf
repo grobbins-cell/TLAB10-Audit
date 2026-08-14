@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
 provider "aws" {
   region = "us-east-1"
 }
@@ -16,7 +25,7 @@ resource "aws_security_group" "vulnerable_sg" {
   }
 }
 
-# Generate a random 4-byte string to ensure globally unique bucket names
+# Generate a random 4-byte string to ensure globally unique bucket and role names
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
