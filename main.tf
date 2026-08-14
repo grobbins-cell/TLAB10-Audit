@@ -80,11 +80,43 @@ resource "aws_s3_bucket" "config_logs_bucket" {
   force_destroy = true
 }
 
+# Bucket Policy granting AWS Config explicit access to write logs
+resource "aws_s3_bucket_policy" "config_logs_policy" {
+  bucket = aws_s3_bucket.config_logs_bucket.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSConfigBucketPermissionsCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.config_logs_bucket.arn
+      },
+      {
+        Sid    = "AWSConfigBucketDelivery"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.config_logs_bucket.arn}/*"
+      }
+    ]
+  })
+}
+
 # Create the Delivery Channel pointing to the logs bucket
 resource "aws_config_delivery_channel" "audit_channel" {
   name           = "compliance-audit-channel"
   s3_bucket_name = aws_s3_bucket.config_logs_bucket.bucket
-  depends_on     = [aws_config_configuration_recorder.audit_recorder]
+  depends_on     = [
+    aws_config_configuration_recorder.audit_recorder,
+    aws_s3_bucket_policy.config_logs_policy
+  ]
 }
 
 # Explicitly turn the Recorder ON
