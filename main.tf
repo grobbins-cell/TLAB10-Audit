@@ -64,7 +64,7 @@ resource "aws_config_config_rule" "ssh_rule" {
   name = "restricted-ssh"
   source {
     owner             = "AWS"
-    source_identifier = "INSECURE_SSH_RULE"
+    source_identifier = "INCOMING_SSH_DISABLED" # Corrected identifier
   }
   depends_on = [aws_config_configuration_recorder.audit_recorder]
 }
