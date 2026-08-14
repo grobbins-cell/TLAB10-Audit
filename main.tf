@@ -16,13 +16,12 @@ resource "aws_security_group" "vulnerable_sg" {
   }
 }
 
-# Generate a random 4-byte string to ensure globally unique bucket names for every student
+# Generate a random 4-byte string to ensure globally unique bucket names
 resource "random_id" "bucket_suffix" {
   byte_length = 4
 }
 
 resource "aws_s3_bucket" "vulnerable_bucket" {
-  # This dynamically attaches the random string to the end of the bucket name
   bucket        = "titan-fintech-compliance-drift-${random_id.bucket_suffix.hex}"
   force_destroy = true
 }
@@ -38,13 +37,8 @@ resource "aws_s3_bucket_public_access_block" "vulnerable_access" {
 
 # --- AWS CONFIG RECORDER MANAGEMENT (THE AUDITOR) ---
 
-resource "aws_config_configuration_recorder" "audit_recorder" {
-  name     = "compliance-audit-recorder"
-  role_arn = aws_iam_role.config_role.arn
-}
-
 resource "aws_iam_role" "config_role" {
-  name = "aws-config-compliance-role"
+  name = "aws-config-compliance-role-${random_id.bucket_suffix.hex}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -60,13 +54,47 @@ resource "aws_iam_role" "config_role" {
   })
 }
 
+# Attach the official AWS Config managed policy so the role has permissions
+resource "aws_iam_role_policy_attachment" "config_policy_attach" {
+  role       = aws_iam_role.config_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+}
+
+resource "aws_config_configuration_recorder" "audit_recorder" {
+  name     = "compliance-audit-recorder"
+  role_arn = aws_iam_role.config_role.arn
+}
+
+# Create a bucket for AWS Config to store its history logs
+resource "aws_s3_bucket" "config_logs_bucket" {
+  bucket        = "titan-fintech-config-logs-${random_id.bucket_suffix.hex}"
+  force_destroy = true
+}
+
+# Create the Delivery Channel pointing to the logs bucket
+resource "aws_config_delivery_channel" "audit_channel" {
+  name           = "compliance-audit-channel"
+  s3_bucket_name = aws_s3_bucket.config_logs_bucket.bucket
+  depends_on     = [aws_config_configuration_recorder.audit_recorder]
+}
+
+# Explicitly turn the Recorder ON
+resource "aws_config_configuration_recorder_status" "audit_recorder_status" {
+  name       = aws_config_configuration_recorder.audit_recorder.name
+  is_enabled = true
+  depends_on = [aws_config_delivery_channel.audit_channel]
+}
+
 resource "aws_config_config_rule" "ssh_rule" {
   name = "restricted-ssh"
   source {
     owner             = "AWS"
-    source_identifier = "INCOMING_SSH_DISABLED" # Corrected identifier
+    source_identifier = "INCOMING_SSH_DISABLED" 
   }
-  depends_on = [aws_config_configuration_recorder.audit_recorder]
+  depends_on = [
+    aws_config_configuration_recorder.audit_recorder,
+    aws_config_configuration_recorder_status.audit_recorder_status
+  ]
 }
 
 resource "aws_config_config_rule" "s3_rule" {
@@ -75,5 +103,8 @@ resource "aws_config_config_rule" "s3_rule" {
     owner             = "AWS"
     source_identifier = "S3_BUCKET_PUBLIC_READ_PROHIBITED"
   }
-  depends_on = [aws_config_configuration_recorder.audit_recorder]
+  depends_on = [
+    aws_config_configuration_recorder.audit_recorder,
+    aws_config_configuration_recorder_status.audit_recorder_status
+  ]
 }
